@@ -1176,8 +1176,11 @@ function createOrder() {
     toast('Name, mobile and amount are required','error'); return;
   }
   const orders = getOrders(session.bizId);
+  const payments = d.advancePaid > 0
+    ? [{ date: new Date().toISOString(), amount: d.advancePaid, note: 'Advance' }]
+    : [];
   orders.push({ ...d, id: genOrderId(session.bizId), status:'Accepted',
-    closed:false, closedAt:null, createdAt: new Date().toISOString() });
+    payments, closed:false, closedAt:null, createdAt: new Date().toISOString() });
   saveOrders(session.bizId, orders);
   closeModal(); toast('Order created!','success'); navigateTo('orders');
 }
@@ -1239,9 +1242,32 @@ function viewOrder(orderId) {
 
       <div class="pay-box">
         <div class="pay-row"><span class="pay-label">Total Amount</span><span class="pay-val">${money(o.totalAmount)}</span></div>
-        <div class="pay-row"><span class="pay-label">Advance Paid</span><span class="pay-val" style="color:var(--success)">${money(o.advancePaid)}</span></div>
-        <div class="pay-row"><span class="pay-label">Balance Due</span><span class="pay-val ${bal>0?'balance':''}">${money(bal)}</span></div>
+        <div class="pay-row"><span class="pay-label">Total Collected</span><span class="pay-val" style="color:var(--success)">${money(o.advancePaid)}</span></div>
+        <div class="pay-row" style="border-top:1px solid var(--gray-200);padding-top:8px;margin-top:4px">
+          <span class="pay-label" style="font-weight:700">Balance Due</span>
+          <span class="pay-val ${bal>0?'balance':''}" style="font-weight:800">${money(bal)}</span>
+        </div>
       </div>
+
+      ${(o.payments||[]).length > 0 ? `
+      <div style="margin-top:14px">
+        <div style="font-size:12px;color:var(--gray-500);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">💳 Payment History</div>
+        <div style="border:1.5px solid var(--gray-200);border-radius:var(--r);overflow:hidden">
+          ${(o.payments||[]).map((p,i) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;${i>0?'border-top:1px solid var(--gray-100)':''}">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--gray-800)">${esc(p.note||'Payment')}</div>
+              <div style="font-size:11px;color:var(--gray-400)">${fmtDate(p.date)}</div>
+            </div>
+            <div style="font-size:14px;font-weight:700;color:var(--success)">${money(p.amount)}</div>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${!o.closed && bal > 0 ? `
+      <button class="btn btn-outline btn-sm" style="margin-top:12px;width:100%;border-color:var(--success);color:var(--success)" onclick="recordPaymentModal('${o.id}')">
+        💰 Record Payment
+      </button>` : ''}
 
       ${renderSpecsDisplay(o.serviceType, o.specs||{})}
       ${o.notes ? `<div style="margin-top:4px"><div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;font-weight:700;margin-bottom:4px">Notes</div><div style="font-size:13px;color:var(--gray-700);white-space:pre-wrap">${esc(o.notes)}</div></div>` : ''}
@@ -1265,25 +1291,44 @@ function advanceStatus(orderId) {
   const orders = getOrders(session.bizId);
   const i = orders.findIndex(o => o.id === orderId);
   const si = STATUS_FLOW.indexOf(orders[i].status);
-  if (si < STATUS_FLOW.length-1) {
-    orders[i].status = STATUS_FLOW[si+1];
-    saveOrders(session.bizId, orders);
-    toast(`Moved to "${orders[i].status}"`, 'success');
-    closeModal(); navigateTo(currentView);
+  if (si < STATUS_FLOW.length - 1) {
+    const nextStatus = STATUS_FLOW[si + 1];
+    const bal = Math.max(0, orders[i].totalAmount - orders[i].advancePaid);
+    if (nextStatus === 'Delivered' && bal > 0) {
+      paymentPromptModal(orderId, bal, () => {
+        const o2 = getOrders(session.bizId);
+        const j  = o2.findIndex(o => o.id === orderId);
+        o2[j].status = 'Delivered';
+        saveOrders(session.bizId, o2);
+        toast('Moved to "Delivered"', 'success');
+        closeModal(); navigateTo(currentView);
+      });
+    } else {
+      orders[i].status = nextStatus;
+      saveOrders(session.bizId, orders);
+      toast(`Moved to "${nextStatus}"`, 'success');
+      closeModal(); navigateTo(currentView);
+    }
   }
 }
 
 function confirmCloseOrder(orderId) {
-  showModal(`
-    <div class="modal-header"><h3>Close Order</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="modal-body">
-      <p style="font-size:15px;margin-bottom:8px">Close order <strong>${esc(orderId)}</strong>?</p>
-      <p style="color:var(--gray-500);font-size:13px">It will be moved to History. You can still view it there anytime.</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="closeOrder('${orderId}')">Yes, Close Order</button>
-    </div>`);
+  const o = getOrders(session.bizId).find(x => x.id === orderId);
+  const bal = Math.max(0, o.totalAmount - o.advancePaid);
+  if (bal > 0) {
+    paymentPromptModal(orderId, bal, () => closeOrder(orderId));
+  } else {
+    showModal(`
+      <div class="modal-header"><h3>Close Order</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <p style="font-size:15px;margin-bottom:8px">Close order <strong>${esc(orderId)}</strong>?</p>
+        <p style="color:var(--gray-500);font-size:13px">It will be moved to History. You can still view it there anytime.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="closeOrder('${orderId}')">Yes, Close Order</button>
+      </div>`);
+  }
 }
 
 function closeOrder(orderId) {
@@ -1294,6 +1339,84 @@ function closeOrder(orderId) {
   saveOrders(session.bizId, orders);
   closeModal(); toast('Order closed and moved to History!','success');
   navigateTo(currentView);
+}
+
+// ── Payment prompt (balance check before Delivered / Close) ──
+function paymentPromptModal(orderId, bal, onDone) {
+  showModal(`
+    <div class="modal-header"><h3>💰 Balance Payment</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="background:var(--warning-light);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;font-size:14px">
+        ⚠️ Balance of <strong>${money(bal)}</strong> is pending on this order.
+      </div>
+      <div class="form-group">
+        <label>Amount Received Now (₹)</label>
+        <input type="number" id="pmtAmt" min="0" max="${bal}" placeholder="0" style="font-size:16px;padding:12px" />
+      </div>
+      <div class="form-group">
+        <label>Note (optional)</label>
+        <input type="text" id="pmtNote" placeholder="e.g. Cash, UPI, Part payment…" />
+      </div>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-outline" onclick="(${onDone.toString()})()">Skip — Collect Later</button>
+      <button class="btn btn-primary" onclick="savePaymentAndContinue('${orderId}', ${onDone.toString()})">Save & Continue</button>
+    </div>`);
+}
+
+function savePaymentAndContinue(orderId, onDone) {
+  const amt  = parseFloat(document.getElementById('pmtAmt').value) || 0;
+  const note = document.getElementById('pmtNote').value.trim() || 'Payment';
+  if (amt > 0) {
+    const orders = getOrders(session.bizId);
+    const i = orders.findIndex(o => o.id === orderId);
+    if (!orders[i].payments) orders[i].payments = [];
+    orders[i].payments.push({ date: new Date().toISOString(), amount: amt, note });
+    orders[i].advancePaid = (orders[i].advancePaid || 0) + amt;
+    saveOrders(session.bizId, orders);
+    toast(`₹${amt.toLocaleString('en-IN')} recorded`, 'success');
+  }
+  onDone();
+}
+
+// ── Standalone Record Payment modal ──
+function recordPaymentModal(orderId) {
+  const o = getOrders(session.bizId).find(x => x.id === orderId);
+  const bal = Math.max(0, o.totalAmount - o.advancePaid);
+  showModal(`
+    <div class="modal-header"><h3>💰 Record Payment</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div style="background:var(--gray-50);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;font-size:14px">
+        Balance remaining: <strong style="color:var(--danger)">${money(bal)}</strong>
+      </div>
+      <div class="form-group">
+        <label>Amount Received (₹)</label>
+        <input type="number" id="pmtAmt" min="1" max="${bal}" placeholder="0" style="font-size:16px;padding:12px" />
+      </div>
+      <div class="form-group">
+        <label>Note (optional)</label>
+        <input type="text" id="pmtNote" placeholder="e.g. Cash, UPI, Part payment…" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="viewOrder('${orderId}')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePayment('${orderId}')">Save Payment</button>
+    </div>`);
+}
+
+function savePayment(orderId) {
+  const amt  = parseFloat(document.getElementById('pmtAmt').value) || 0;
+  const note = document.getElementById('pmtNote').value.trim() || 'Payment';
+  if (!amt || amt <= 0) { toast('Enter a valid amount','error'); return; }
+  const orders = getOrders(session.bizId);
+  const i = orders.findIndex(o => o.id === orderId);
+  if (!orders[i].payments) orders[i].payments = [];
+  orders[i].payments.push({ date: new Date().toISOString(), amount: amt, note });
+  orders[i].advancePaid = (orders[i].advancePaid || 0) + amt;
+  saveOrders(session.bizId, orders);
+  toast(`₹${amt.toLocaleString('en-IN')} recorded!`, 'success');
+  viewOrder(orderId);
 }
 
 // ══════════════════════════════════════
