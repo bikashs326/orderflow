@@ -735,7 +735,10 @@ function renderDashboard() {
         <h1>Dashboard</h1>
         <p>${esc(session.bizName)} &bull; ${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p>
       </div>
-      <button class="btn btn-primary" onclick="showAddOrder()">${ico('plus')} New Order</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${orders.length < 5 ? `<button class="btn btn-outline" onclick="seedDemoData()" style="border-color:#7c3aed;color:#7c3aed">🎯 Load Demo Data</button>` : ''}
+        <button class="btn btn-primary" onclick="showAddOrder()">${ico('plus')} New Order</button>
+      </div>
     </div>
 
     <div class="stats-grid">
@@ -1678,6 +1681,111 @@ function renderRevenue() {
         </tbody>
       </table>
     </div>`;
+}
+
+// ══════════════════════════════════════
+// DEMO DATA SEED
+// ══════════════════════════════════════
+function seedDemoData() {
+  const existing = getOrders(session.bizId);
+  if (existing.length > 0) {
+    if (!confirm('This will add 50 demo orders to your account. Continue?')) return;
+  }
+
+  const names = [
+    'Rajesh Kumar','Priya Sharma','Amit Patel','Sunita Verma','Vikram Singh',
+    'Meera Joshi','Deepak Gupta','Anita Reddy','Sanjay Mehta','Kavitha Nair',
+    'Ramesh Yadav','Pooja Agarwal','Suresh Bose','Geeta Malhotra','Vinod Chopra',
+    'Rekha Iyer','Arun Tiwari','Nisha Pandey','Manoj Sinha','Usha Trivedi',
+    'Harish Saxena','Lata Mishra','Dinesh Jain','Saroj Kapoor','Ashok Rao',
+    'Asha Dubey','Mohan Shukla','Radha Pillai','Bharat Arora','Shanti Bajaj',
+    'Kamal Bhatt','Nalini Desai','Gopal Murthy','Indira Nanda','Prem Oberoi',
+    'Kamla Prasad','Sunil Rathi','Gita Soni','Ravi Tandon','Uma Vaidya',
+    'Anil Walia','Mamta Joshi','Dev Yadav','Sheela Sinha','Jagdish Tiwari',
+    'Pushpa Bhardwaj','Tilak Chandra','Sarla Dutta','Prakash Iyer','Sumati Fernandes'
+  ];
+  const mobiles = [
+    '9876543210','8765432109','7654321098','6543210987','9988776655',
+    '8877665544','7766554433','9090909090','8080808080','7070707070',
+    '9123456789','8234567890','7345678901','6456789012','9512345678',
+    '8623456789','7734567890','9845678901','8956789012','7067890123',
+    '9178901234','8289012345','7390123456','6401234567','9501234568',
+    '8612345679','7723456780','9834567891','8945678902','7056789013',
+    '9167890124','8278901235','7389012346','6490123457','9500123568',
+    '8611234679','7722345780','9833456891','8944567902','7055678013',
+    '9166789124','8277890235','7388901346','6499012457','9509123568',
+    '8610234679','7721345780','9832456891','8943567902','7054678013'
+  ];
+  const services = [
+    'Banner','Banner','Banner','Banner','Banner',
+    'Flex Print','Flex Print','Flex Print','Flex Print','Flex Print',
+    'Book','Book','Book','Book',
+    'Notebook','Notebook','Notebook','Notebook',
+    'Photo','Photo','Photo','Photo',
+    'Wedding Card','Wedding Card','Wedding Card','Wedding Card',
+    'Visiting Card','Visiting Card','Visiting Card','Visiting Card',
+    'Poster','Poster','Poster','Poster',
+    'Sticker','Sticker','Sticker',
+    'T-Shirt Print','T-Shirt Print','T-Shirt Print',
+    'Flag','Flag','Flag',
+    'Diary','Diary',
+    'Calendar','Calendar',
+    'Other','Other'
+  ];
+  const specMap = {
+    'Banner':        {width:'4 ft',height:'3 ft',qty:'2',material:'Vinyl (Standard)',side:'Single Side',finish:'Hem & Eyelets',design:'Yes – Customer will provide'},
+    'Flex Print':    {width:'6 ft',height:'4 ft',qty:'1',material:'Flex (Standard)',side:'Single Side',finish:'Hem & Eyelets',design:'No – Design work needed'},
+    'Book':          {size:'A4',pages:'100',binding:'Perfect Binding',paperType:'70 GSM Maplitho',color:'Black & White',qty:'50',cover:'Soft Cover'},
+    'Notebook':      {size:'A5',pages:'100',ruling:'Single Line',coverType:'Paperback',binding:'Spiral',color:'Blue Lines',qty:'100'},
+    'Photo':         {size:'4×6 inches',finish:'Glossy',qty:'10',type:'Color Print'},
+    'Wedding Card':  {size:'A5 Folded',paper:'Art Card 350 GSM',finish:'Lamination (Matte)',qty:'500',color:'Full Color',design:'No – Design work needed'},
+    'Visiting Card': {size:'Standard (90×54 mm)',paper:'Art Card 350 GSM',finish:'Lamination (Gloss)',qty:'100',sides:'Double Side',color:'Full Color'},
+    'Poster':        {size:'A2',paper:'Art Paper 130 GSM',finish:'Lamination (Matte)',qty:'50',color:'Full Color'},
+    'Sticker':       {size:'Custom',material:'Vinyl Sticker',finish:'Glossy',qty:'100',shape:'Rectangle',color:'Full Color'},
+    'T-Shirt Print': {size:'M',fabric:'Cotton',printType:'DTF Print',color:'White',qty:'10',design:'Yes – Customer will provide'},
+    'Flag':          {width:'2 ft',height:'3 ft',material:'Polyester',finish:'Pole Pocket',side:'Single Side',qty:'5'},
+    'Diary':         {size:'A5',pages:'365',binding:'Hard Bound',paperType:'70 GSM Ivory',logo:'Yes – With branding',qty:'50'},
+    'Calendar':      {type:'Wall Calendar',size:'A3',pages:'13',paperType:'Art Paper 130 GSM',finish:'Lamination',qty:'100'},
+    'Other':         {desc:'Custom order as per customer requirement'},
+  };
+  const amounts  = [500,800,1200,1500,2000,2500,3000,3500,4000,4500,5000,6000,7500,8000,10000,12000,15000];
+  const advances = [0,0,0,500,1000,1500,2000,2500,3000];
+  const notesList = [
+    'Urgent — needed by tomorrow','Customer will collect from shop',
+    'Call before delivery','Design to be shared via WhatsApp',
+    'Sample required before bulk run','Rush order','','','','',''
+  ];
+
+  const now = new Date();
+  const newOrders = [];
+  for (let i = 0; i < 50; i++) {
+    const svc   = services[i];
+    const total = amounts[i % amounts.length];
+    const adv   = Math.min(advances[i % advances.length], total);
+    const daysAgo  = (i % 20);
+    const dueInDays = 3 + (i % 18);
+    const createdAt = new Date(now); createdAt.setDate(createdAt.getDate() - daysAgo);
+    const dueDate   = new Date(now); dueDate.setDate(dueDate.getDate() + dueInDays);
+    const ordNum = existing.length + newOrders.length + 1;
+    newOrders.push({
+      id: 'ORD-' + String(ordNum).padStart(4,'0'),
+      customerName:   names[i],
+      contactPerson:  names[i],
+      customerMobile: mobiles[i],
+      serviceType:    svc,
+      dueDate:        dueDate.toISOString().split('T')[0],
+      totalAmount:    total,
+      advancePaid:    adv,
+      notes:          notesList[i % notesList.length],
+      specs:          specMap[svc] || {},
+      status:         'Accepted',
+      closed: false, closedAt: null,
+      createdAt: createdAt.toISOString(),
+    });
+  }
+  saveOrders(session.bizId, [...existing, ...newOrders]);
+  toast('50 demo orders loaded!', 'success');
+  navigateTo('dashboard');
 }
 
 // ══════════════════════════════════════
