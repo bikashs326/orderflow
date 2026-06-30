@@ -997,8 +997,10 @@ function showEditOrder(orderId) {
 
 function buildOrderForm(o, isDuplicate = false) {
   const isEdit = !!o && !isDuplicate;
+  const prefill = isEdit || isDuplicate; // pre-fill data for both edit and duplicate
   const initSvc = o ? o.serviceType : SERVICE_TYPES[0];
   const bal = isEdit ? Math.max(0, o.totalAmount - o.advancePaid) : 0;
+  const hasDiffCP = prefill && o.contactPerson && o.contactPerson !== o.customerName;
   return `
     <div class="modal-header">
       <h3>${isEdit ? 'Edit Order — ' + esc(o.id) : isDuplicate ? '↗ Reorder (copy of ' + esc(o.id) + ')' : 'New Order'}</h3>
@@ -1009,12 +1011,12 @@ function buildOrderForm(o, isDuplicate = false) {
         <div class="form-group span-2">
           <label>Customer Name / Organization *</label>
           <input id="fCN" placeholder="Individual name or company / shop name"
-                 value="${isEdit?esc(o.customerName):''}" oninput="syncContactPerson()" />
+                 value="${prefill?esc(o.customerName):''}" oninput="syncContactPerson()" />
         </div>
         <div class="form-group span-2" style="margin-top:-6px;margin-bottom:4px">
           <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;color:var(--gray-600)">
             <input type="checkbox" id="fSameCP" style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer"
-                   ${isEdit && o.contactPerson && o.contactPerson !== o.customerName ? '' : 'checked'}
+                   ${hasDiffCP ? '' : 'checked'}
                    onchange="toggleContactPerson()" />
             Contact person is same as customer name
           </label>
@@ -1022,12 +1024,12 @@ function buildOrderForm(o, isDuplicate = false) {
         <div class="form-group">
           <label>Contact Person *</label>
           <input id="fCP" placeholder="Person to contact"
-                 value="${isEdit ? esc(o.contactPerson||o.customerName) : ''}"
-                 ${isEdit && o.contactPerson && o.contactPerson !== o.customerName ? '' : 'style="background:var(--gray-50);color:var(--gray-500)" readonly'} />
+                 value="${prefill ? esc(o.contactPerson||o.customerName) : ''}"
+                 ${hasDiffCP ? '' : 'style="background:var(--gray-50);color:var(--gray-500)" readonly'} />
         </div>
         <div class="form-group">
           <label>Contact Number *</label>
-          <input id="fCM" type="tel" placeholder="10-digit mobile" value="${isEdit?esc(o.customerMobile):''}" />
+          <input id="fCM" type="tel" placeholder="10-digit mobile" value="${prefill?esc(o.customerMobile):''}" />
         </div>
         <div class="form-group">
           <label>Service Type *</label>
@@ -1041,11 +1043,11 @@ function buildOrderForm(o, isDuplicate = false) {
         </div>
         <div class="form-group">
           <label>Total Amount (₹) *</label>
-          <input id="fTA" type="number" min="0" placeholder="0" value="${isEdit?o.totalAmount:''}" oninput="calcBal()" />
+          <input id="fTA" type="number" min="0" placeholder="0" value="${prefill?o.totalAmount:''}" oninput="calcBal()" />
         </div>
         <div class="form-group">
           <label>Advance Paid (₹)</label>
-          <input id="fAP" type="number" min="0" placeholder="0" value="${isEdit?o.advancePaid:'0'}" oninput="calcBal()" />
+          <input id="fAP" type="number" min="0" placeholder="0" value="${isDuplicate?'0':(isEdit?o.advancePaid:'0')}" oninput="calcBal()" />
         </div>
       </div>
 
@@ -1055,12 +1057,12 @@ function buildOrderForm(o, isDuplicate = false) {
 
       <!-- Dynamic spec fields — swapped when service type changes -->
       <div id="specContainer">
-        ${renderSpecFields(initSvc, isEdit ? (o.specs||{}) : {})}
+        ${renderSpecFields(initSvc, prefill ? (o.specs||{}) : {})}
       </div>
 
       <div class="form-group">
         <label>Notes / Remarks</label>
-        <textarea id="fNotes" placeholder="Special instructions, customer preferences…">${isEdit?esc(o.notes):''}</textarea>
+        <textarea id="fNotes" placeholder="Special instructions, customer preferences…">${prefill?esc(o.notes):''}</textarea>
       </div>
       ${isEdit ? `
         <div class="form-group">
