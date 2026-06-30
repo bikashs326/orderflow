@@ -386,6 +386,7 @@
 
 // ── Constants ──────────────────────────────────────────────
 const ADMIN_CREDS = { username: 'superadmin', password: 'Admin@1234' };
+const DEMO_CREDS  = { username: 'demo', password: 'Demo@1234', bizId: 'biz_demo', bizName: 'Demo Print Shop' };
 const STATUS_FLOW = ['Accepted', 'In Progress', 'Ready', 'Delivered'];
 const SERVICE_TYPES = [
   'Banner','Book','Notebook','Photo','Wedding Card',
@@ -572,6 +573,22 @@ function doLogin() {
 
   if (u === ADMIN_CREDS.username && p === ADMIN_CREDS.password) {
     ss.set({ role:'admin', username:u, bizId:null, bizName:'Super Admin Panel' });
+    bootApp(); return;
+  }
+  if (u === DEMO_CREDS.username && p === DEMO_CREDS.password) {
+    // Ensure demo biz exists in business list
+    const bizList = getBusinesses();
+    if (!bizList.find(b => b.id === DEMO_CREDS.bizId)) {
+      bizList.push({ id: DEMO_CREDS.bizId, name: DEMO_CREDS.bizName, username: DEMO_CREDS.username, password: DEMO_CREDS.password, active: true });
+      saveBizList(bizList);
+    }
+    // Auto-seed demo orders if none exist on this device
+    if (getOrders(DEMO_CREDS.bizId).length === 0) {
+      ss.set({ role:'owner', username:u, bizId:DEMO_CREDS.bizId, bizName:DEMO_CREDS.bizName });
+      session = ss.get();
+      seedDemoData(true);
+    }
+    ss.set({ role:'owner', username:u, bizId:DEMO_CREDS.bizId, bizName:DEMO_CREDS.bizName });
     bootApp(); return;
   }
   const biz = getBusinesses().find(b => b.username === u && b.password === p && b.active !== false);
@@ -1686,9 +1703,9 @@ function renderRevenue() {
 // ══════════════════════════════════════
 // DEMO DATA SEED
 // ══════════════════════════════════════
-function seedDemoData() {
+function seedDemoData(silent = false) {
   const existing = getOrders(session.bizId);
-  if (existing.length > 0) {
+  if (!silent && existing.length > 0) {
     if (!confirm('This will add 50 demo orders to your account. Continue?')) return;
   }
 
