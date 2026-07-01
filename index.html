@@ -439,7 +439,9 @@ const DEMO_CREDS  = { username: 'demo', password: 'Demo@1234', bizId: 'biz_demo'
 
 // ── Feature definitions (add new features here) ────────────
 const FEATURE_DEFS = [
-  { id:'whatsappReceipt', label:'WhatsApp Order Receipt', desc:'Auto-prompt to send receipt on order creation' },
+  { id:'whatsappReceipt',  label:'WhatsApp Order Receipt',  desc:'Auto-prompt to send receipt on order creation' },
+  { id:'fileAttachments',  label:'File Attachments',         desc:'Attach photos/PDFs to any order' },
+  { id:'staffAssignment',  label:'Staff Assignment',          desc:'Assign orders to staff members' },
 ];
 
 // Check if a feature is enabled for current business
@@ -597,6 +599,8 @@ const getBusinesses  = () => ls.get('of_biz') || [];
 const saveBizList    = d  => ls.set('of_biz', d);
 const getOrders      = id => ls.get('of_ord_' + id) || [];
 const saveOrders     = (id,d) => ls.set('of_ord_' + id, d);
+const getStaff       = id => ls.get('of_staff_' + id) || [];
+const saveStaff      = (id,d) => ls.set('of_staff_' + id, d);
 
 // ── ID generators ───────────────────────────────────────────
 const genBizId = () => 'biz_' + Date.now();
@@ -732,7 +736,11 @@ function buildSidebar() {
       </div>
       <div class="nav-item" id="nav-revenue" onclick="navigateTo('revenue');closeSidebar()">
         ${ico('revenue')} Revenue
-      </div>`;
+      </div>
+      ${hasFeature('staffAssignment') ? `
+      <div class="nav-item" id="nav-staff" onclick="navigateTo('staff');closeSidebar()">
+        ${ico('staff')} Staff
+      </div>` : ''}`;
   }
 }
 
@@ -751,6 +759,7 @@ function navigateTo(view) {
   else if (view === 'orders')      main.innerHTML = renderOrders(false);
   else if (view === 'history')     main.innerHTML = renderOrders(true);
   else if (view === 'revenue')     main.innerHTML = renderRevenue();
+  else if (view === 'staff')       main.innerHTML = renderStaff();
 }
 
 // ══════════════════════════════════════
@@ -1187,6 +1196,17 @@ function buildOrderForm(o, isDuplicate = false) {
         ${renderSpecFields(initSvc, prefill ? (o.specs||{}) : {})}
       </div>
 
+      ${hasFeature('staffAssignment') ? (() => {
+        const staff = getStaff(session.bizId);
+        const assigned = prefill ? (o.assignedTo||'') : '';
+        return `<div class="form-group">
+          <label>Assign To</label>
+          <select id="fAssign">
+            <option value="">— Unassigned —</option>
+            ${staff.map(s => `<option value="${esc(s.id)}" ${assigned===s.id?'selected':''}>${esc(s.name)} (${esc(s.role||'Staff')})</option>`).join('')}
+          </select>
+        </div>`;
+      })() : ''}
       <div class="form-group">
         <label>Notes / Remarks</label>
         <textarea id="fNotes" placeholder="Special instructions, customer preferences…">${prefill?esc(o.notes):''}</textarea>
@@ -1227,6 +1247,12 @@ function readOrderForm() {
     advancePaid:    parseFloat(document.getElementById('fAP').value)||0,
     notes:          document.getElementById('fNotes').value.trim(),
     specs:          readSpecFields(serviceType),
+    assignedTo:     (() => {
+      const el = document.getElementById('fAssign');
+      if (!el || !el.value) return null;
+      const s = getStaff(session.bizId).find(x => x.id === el.value);
+      return s ? { id: s.id, name: s.name } : null;
+    })(),
   };
 }
 
@@ -1343,8 +1369,37 @@ function viewOrder(orderId) {
         💰 Record Payment
       </button>` : ''}
 
+      ${o.assignedTo ? `
+      <div style="display:flex;align-items:center;gap:8px;background:var(--primary-light);border-radius:var(--r);padding:9px 14px;margin-bottom:14px">
+        <span style="font-size:18px">👷</span>
+        <div><div style="font-size:11px;color:var(--primary);font-weight:700;text-transform:uppercase">Assigned To</div>
+        <div style="font-size:14px;font-weight:600">${esc(o.assignedTo.name)}</div></div>
+      </div>` : ''}
+
       ${renderSpecsDisplay(o.serviceType, o.specs||{})}
       ${o.notes ? `<div style="margin-top:4px"><div style="font-size:11px;color:var(--gray-400);text-transform:uppercase;font-weight:700;margin-bottom:4px">Notes</div><div style="font-size:13px;color:var(--gray-700);white-space:pre-wrap">${esc(o.notes)}</div></div>` : ''}
+
+      ${hasFeature('fileAttachments') ? `
+      <div style="margin-top:16px">
+        <div style="font-size:12px;color:var(--gray-500);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">📎 Attachments</div>
+        ${(o.attachments||[]).length ? `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          ${(o.attachments||[]).map((a,i) => `
+          <div style="border:1.5px solid var(--gray-200);border-radius:var(--r);overflow:hidden;width:90px;text-align:center;position:relative">
+            ${a.type && a.type.startsWith('image/')
+              ? `<img src="${a.data}" style="width:90px;height:70px;object-fit:cover;display:block" />`
+              : `<div style="width:90px;height:70px;display:flex;align-items:center;justify-content:center;background:var(--gray-50);font-size:26px">📄</div>`}
+            <div style="font-size:10px;color:var(--gray-500);padding:3px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.name)}</div>
+            <button onclick="viewAttachment('${o.id}',${i})" style="position:absolute;top:2px;left:2px;background:rgba(0,0,0,.5);border:none;color:white;font-size:10px;padding:2px 5px;border-radius:4px;cursor:pointer">👁</button>
+            ${!o.closed ? `<button onclick="removeAttachment('${o.id}',${i})" style="position:absolute;top:2px;right:2px;background:rgba(220,38,38,.8);border:none;color:white;font-size:10px;padding:2px 5px;border-radius:4px;cursor:pointer">✕</button>` : ''}
+          </div>`).join('')}
+        </div>` : `<div style="color:var(--gray-400);font-size:13px;margin-bottom:10px">No files attached yet.</div>`}
+        ${!o.closed ? `
+        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--gray-50);border:1.5px dashed var(--gray-300);border-radius:var(--r);padding:8px 14px;font-size:13px;font-weight:600;color:var(--gray-600)">
+          📎 Attach File
+          <input type="file" accept="image/*,.pdf" style="display:none" onchange="attachFile('${o.id}',this)" multiple />
+        </label>` : ''}
+      </div>` : ''}
     </div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-ghost btn-sm" onclick="printWorkSlip('${o.id}')" title="Print work slip">🖨️ Print</button>
@@ -2085,6 +2140,133 @@ function seedDemoData(silent = false) {
 }
 
 // ══════════════════════════════════════
+// FILE ATTACHMENTS
+// ══════════════════════════════════════
+function attachFile(orderId, input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  const MAX = 2 * 1024 * 1024; // 2MB per file
+  let loaded = 0;
+  files.forEach(file => {
+    if (file.size > MAX) { toast(`${file.name} is too large (max 2MB)`,'error'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const orders = getOrders(session.bizId);
+      const i = orders.findIndex(o => o.id === orderId);
+      if (!orders[i].attachments) orders[i].attachments = [];
+      orders[i].attachments.push({ name: file.name, type: file.type, data: e.target.result, uploadedAt: new Date().toISOString() });
+      saveOrders(session.bizId, orders);
+      loaded++;
+      if (loaded === files.length) { toast(`${loaded} file${loaded>1?'s':''} attached!`,'success'); viewOrder(orderId); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeAttachment(orderId, index) {
+  if (!confirm('Remove this attachment?')) return;
+  const orders = getOrders(session.bizId);
+  const i = orders.findIndex(o => o.id === orderId);
+  orders[i].attachments.splice(index, 1);
+  saveOrders(session.bizId, orders);
+  toast('Attachment removed','success');
+  viewOrder(orderId);
+}
+
+function viewAttachment(orderId, index) {
+  const o = getOrders(session.bizId).find(x => x.id === orderId);
+  const a = (o.attachments||[])[index];
+  if (!a) return;
+  if (a.type && a.type.startsWith('image/')) {
+    showModal(`
+      <div class="modal-header"><h3>📎 ${esc(a.name)}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+      <div class="modal-body" style="text-align:center">
+        <img src="${a.data}" style="max-width:100%;border-radius:var(--r)" />
+        <div style="font-size:11px;color:var(--gray-400);margin-top:8px">${fmtDate(a.uploadedAt)}</div>
+      </div>`);
+  } else {
+    const w = window.open('','_blank');
+    w.document.write(`<html><body style="margin:0"><embed src="${a.data}" width="100%" height="100%" /></body></html>`);
+    w.document.close();
+  }
+}
+
+// ══════════════════════════════════════
+// STAFF MANAGEMENT
+// ══════════════════════════════════════
+function renderStaff() {
+  const staff = getStaff(session.bizId);
+  const rows = staff.length ? staff.map(s => `
+    <tr>
+      <td><strong>${esc(s.name)}</strong></td>
+      <td>${esc(s.role||'—')}</td>
+      <td>${esc(s.phone||'—')}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="editStaffModal('${s.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteStaff('${s.id}')">Remove</button>
+      </td>
+    </tr>`).join('') :
+    `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--gray-400)">No staff added yet</td></tr>`;
+
+  return `
+    <div class="page-header">
+      <div><h1>Staff Members</h1><p>${staff.length} member${staff.length!==1?'s':''}</p></div>
+      <button class="btn btn-primary" onclick="addStaffModal()">${ico('plus')} Add Staff</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function addStaffModal(prefill) {
+  const s = prefill || {};
+  showModal(`
+    <div class="modal-header"><h3>${s.id ? 'Edit Staff' : 'Add Staff Member'}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Name *</label><input id="sfName" value="${esc(s.name||'')}" placeholder="Full name" /></div>
+      <div class="form-group"><label>Role</label><input id="sfRole" value="${esc(s.role||'')}" placeholder="e.g. Banner Printer, Designer, Delivery" /></div>
+      <div class="form-group"><label>Phone</label><input id="sfPhone" value="${esc(s.phone||'')}" placeholder="10-digit mobile" type="tel" /></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveStaffMember('${s.id||''}')">${s.id ? 'Save Changes' : 'Add Staff'}</button>
+    </div>`);
+}
+
+function editStaffModal(staffId) {
+  const s = getStaff(session.bizId).find(x => x.id === staffId);
+  if (s) addStaffModal(s);
+}
+
+function saveStaffMember(editId) {
+  const name  = document.getElementById('sfName').value.trim();
+  const role  = document.getElementById('sfRole').value.trim();
+  const phone = document.getElementById('sfPhone').value.trim();
+  if (!name) { toast('Name is required','error'); return; }
+  const list = getStaff(session.bizId);
+  if (editId) {
+    const i = list.findIndex(s => s.id === editId);
+    if (i !== -1) { list[i].name = name; list[i].role = role; list[i].phone = phone; }
+  } else {
+    list.push({ id:'stf_'+Date.now(), name, role, phone });
+  }
+  saveStaff(session.bizId, list);
+  toast(editId ? 'Staff updated!' : 'Staff added!','success');
+  closeModal(); navigateTo('staff');
+}
+
+function deleteStaff(staffId) {
+  if (!confirm('Remove this staff member?')) return;
+  const list = getStaff(session.bizId).filter(s => s.id !== staffId);
+  saveStaff(session.bizId, list);
+  toast('Staff removed','success');
+  navigateTo('staff');
+}
+
+// ══════════════════════════════════════
 // ICONS (inline SVG)
 // ══════════════════════════════════════
 function ico(name) {
@@ -2095,6 +2277,7 @@ function ico(name) {
     history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>`,
     plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
     revenue: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+    staff:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
   };
   return icons[name] || '';
 }
