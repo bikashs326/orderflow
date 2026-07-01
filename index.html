@@ -1179,10 +1179,23 @@ function createOrder() {
   const payments = d.advancePaid > 0
     ? [{ date: new Date().toISOString(), amount: d.advancePaid, note: 'Advance' }]
     : [];
-  orders.push({ ...d, id: genOrderId(session.bizId), status:'Accepted',
-    payments, closed:false, closedAt:null, createdAt: new Date().toISOString() });
+  const newOrder = { ...d, id: genOrderId(session.bizId), status:'Accepted',
+    payments, closed:false, closedAt:null, createdAt: new Date().toISOString() };
+  orders.push(newOrder);
   saveOrders(session.bizId, orders);
-  closeModal(); toast('Order created!','success'); navigateTo('orders');
+  closeModal();
+  // Prompt to send WhatsApp receipt
+  showModal(`
+    <div class="modal-header"><h3>✅ Order Created!</h3><button class="modal-close" onclick="closeModal();navigateTo('orders')">✕</button></div>
+    <div class="modal-body" style="text-align:center;padding:28px 20px">
+      <div style="font-size:48px;margin-bottom:12px">🧾</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px">${esc(newOrder.id)} saved successfully</div>
+      <div style="font-size:13px;color:var(--gray-500);margin-bottom:24px">Send order receipt to <strong>${esc(d.contactPerson||d.customerName)}</strong> via WhatsApp?</div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button class="btn btn-outline" onclick="closeModal();navigateTo('orders')">Skip</button>
+        <button class="btn" style="background:#25d366;color:white;font-size:15px;padding:11px 28px" onclick="closeModal();sendOrderReceipt('${newOrder.id}');navigateTo('orders')">💬 Send Receipt</button>
+      </div>
+    </div>`);
 }
 
 function updateOrder(orderId) {
@@ -1282,7 +1295,8 @@ function viewOrder(orderId) {
            ${stepIdx < STATUS_FLOW.length-1
              ? `<button class="btn btn-primary btn-sm" onclick="advanceStatus('${o.id}')">→ ${STATUS_FLOW[stepIdx+1]}</button>`
              : ''}
-           <button class="btn btn-sm" style="background:#25d366;color:white" onclick="sendWhatsApp('${o.id}')">💬 WhatsApp</button>`
+           <button class="btn btn-sm" style="background:#25d366;color:white" onclick="sendWhatsApp('${o.id}')">💬 Status</button>
+           <button class="btn btn-sm" style="background:#128C7E;color:white" onclick="sendOrderReceipt('${o.id}')">🧾 Receipt</button>`
       }
     </div>`);
 }
@@ -1592,6 +1606,40 @@ function sendWhatsApp(orderId) {
     'Delivered':   'Your order has been successfully delivered. Thank you for your business!',
   };
   const msg = `Hello *${name}*,\n\nYour order *${o.id}* (${o.serviceType}) status has been updated to *${o.status}*.\n\n${statusMsg[o.status]||''}\n\nFor any queries, feel free to contact us.\n\nThank you!\n— *${session.bizName}*`;
+  window.open('https://wa.me/91' + mobile + '?text=' + encodeURIComponent(msg), '_blank');
+}
+
+function sendOrderReceipt(orderId) {
+  const o = getOrders(session.bizId).find(x => x.id === orderId);
+  if (!o) return;
+  const name   = o.contactPerson || o.customerName;
+  const mobile = o.customerMobile.replace(/\D/g,'');
+  if (!mobile || mobile.length < 10) { toast('No valid mobile number','error'); return; }
+
+  const defs = SPEC_DEFS[o.serviceType] || [];
+  const specs = o.specs || {};
+  const specLines = defs.filter(f => specs[f.id]).map(f => `   • ${f.label}: ${specs[f.id]}`).join('\n');
+  const bal = Math.max(0, o.totalAmount - o.advancePaid);
+
+  const msg =
+`🧾 *Order Confirmation*
+*${o.id} — ${session.bizName}*
+━━━━━━━━━━━━━━━━━━━━
+
+👤 *Name:* ${name}
+📦 *Service:* ${o.serviceType}
+📅 *Due Date:* ${o.dueDate ? fmtDate(o.dueDate) : 'To be confirmed'}
+${specLines ? `\n📋 *Specifications:*\n${specLines}\n` : ''}
+💰 *Payment Summary*
+Total Amount:  ₹${Number(o.totalAmount).toLocaleString('en-IN')}
+Advance Paid:  ₹${Number(o.advancePaid).toLocaleString('en-IN')}
+Balance Due:   ₹${Number(bal).toLocaleString('en-IN')}
+${o.notes ? `\n📝 *Note:* ${o.notes}` : ''}
+
+Thank you for your order! 🙏
+We'll keep you updated on the progress.
+— *${session.bizName}*`;
+
   window.open('https://wa.me/91' + mobile + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
