@@ -311,6 +311,28 @@
     }
     .cred-box span { color: var(--primary); font-weight: 700; }
 
+    /* ── Feature Toggles ── */
+    .feature-list { margin-top:14px; border-top:1px solid var(--gray-100); padding-top:12px; }
+    .feature-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:7px 0; border-bottom:1px solid var(--gray-100);
+    }
+    .feature-row:last-child { border-bottom:none; }
+    .feature-label { font-size:12px; font-weight:600; color:var(--gray-700); }
+    .feature-desc  { font-size:11px; color:var(--gray-400); margin-top:1px; }
+    .tog { position:relative; display:inline-block; width:38px; height:22px; flex-shrink:0; cursor:pointer; }
+    .tog input { opacity:0; width:0; height:0; }
+    .tog-track {
+      position:absolute; inset:0; background:var(--gray-300);
+      border-radius:22px; transition:.2s;
+    }
+    .tog input:checked + .tog-track { background:var(--success); }
+    .tog-track:before {
+      content:''; position:absolute; width:16px; height:16px;
+      left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s;
+    }
+    .tog input:checked + .tog-track:before { transform:translateX(16px); }
+
     /* ══════════════════════════════════════
        EMPTY STATE
     ══════════════════════════════════════ */
@@ -414,6 +436,29 @@
 // ── Constants ──────────────────────────────────────────────
 const ADMIN_CREDS = { username: 'superadmin', password: 'Admin@1234' };
 const DEMO_CREDS  = { username: 'demo', password: 'Demo@1234', bizId: 'biz_demo', bizName: 'Demo Print Shop' };
+
+// ── Feature definitions (add new features here) ────────────
+const FEATURE_DEFS = [
+  { id:'whatsappReceipt', label:'WhatsApp Order Receipt', desc:'Auto-prompt to send receipt on order creation' },
+];
+
+// Check if a feature is enabled for current business
+function hasFeature(featureId) {
+  if (session.role === 'admin') return true;
+  const biz = getBusinesses().find(b => b.id === session.bizId);
+  return !!(biz && biz.features && biz.features[featureId]);
+}
+
+// Toggle a feature on/off for a business (called from admin panel)
+function toggleFeature(bizId, featureId, el) {
+  const list = getBusinesses();
+  const i = list.findIndex(b => b.id === bizId);
+  if (i === -1) return;
+  if (!list[i].features) list[i].features = {};
+  list[i].features[featureId] = el.checked;
+  saveBizList(list);
+  toast(el.checked ? `Feature enabled` : `Feature disabled`, 'success');
+}
 const STATUS_FLOW = ['Accepted', 'In Progress', 'Ready', 'Delivered'];
 const SERVICE_TYPES = [
   'Banner','Book','Notebook','Photo','Wedding Card',
@@ -730,6 +775,21 @@ function renderAdminBiz() {
           <div class="biz-stat"><div class="n">${orders.length}</div><div class="l">Total</div></div>
         </div>
         <div class="cred-box">U: <span>${esc(biz.username)}</span> &nbsp; P: <span>${esc(biz.password)}</span></div>
+        <div class="feature-list">
+          <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Features</div>
+          ${FEATURE_DEFS.map(f => `
+          <div class="feature-row">
+            <div>
+              <div class="feature-label">${f.label}</div>
+              <div class="feature-desc">${f.desc}</div>
+            </div>
+            <label class="tog">
+              <input type="checkbox" ${(biz.features||{})[f.id] ? 'checked' : ''}
+                     onchange="toggleFeature('${biz.id}','${f.id}',this)" />
+              <span class="tog-track"></span>
+            </label>
+          </div>`).join('')}
+        </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="btn btn-ghost btn-sm" onclick="showEditBiz('${biz.id}')">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="confirmDeleteBiz('${biz.id}')">Delete</button>
@@ -1184,6 +1244,7 @@ function createOrder() {
   orders.push(newOrder);
   saveOrders(session.bizId, orders);
   closeModal();
+  if (!hasFeature('whatsappReceipt')) { toast('Order created!','success'); navigateTo('orders'); return; }
   // Prompt to send WhatsApp receipt
   showModal(`
     <div class="modal-header"><h3>✅ Order Created!</h3><button class="modal-close" onclick="closeModal();navigateTo('orders')">✕</button></div>
@@ -1296,7 +1357,7 @@ function viewOrder(orderId) {
              ? `<button class="btn btn-primary btn-sm" onclick="advanceStatus('${o.id}')">→ ${STATUS_FLOW[stepIdx+1]}</button>`
              : ''}
            <button class="btn btn-sm" style="background:#25d366;color:white" onclick="sendWhatsApp('${o.id}')">💬 Status</button>
-           <button class="btn btn-sm" style="background:#128C7E;color:white" onclick="sendOrderReceipt('${o.id}')">🧾 Receipt</button>`
+           ${hasFeature('whatsappReceipt') ? `<button class="btn btn-sm" style="background:#128C7E;color:white" onclick="sendOrderReceipt('${o.id}')">🧾 Receipt</button>` : ''}`
       }
     </div>`);
 }
